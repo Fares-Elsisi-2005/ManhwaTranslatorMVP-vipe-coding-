@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "WebtoonTranslate",
+  "version": "1.0.0",
+  "description": "Translate Webtoon episodes word by word — English to Arabic",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.webtoons.com/*",
+        "https://webtoons.com/*",
+        "http://localhost/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://www.webtoons.com/*",
+    "http://localhost/*",
+    "https://*.replit.dev/*"
+  ]
+}
