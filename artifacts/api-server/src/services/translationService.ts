@@ -1,95 +1,94 @@
 /**
- * Translation Service — translates words from one language to another.
- *
- * CURRENT: Mock implementation using a static English → Arabic dictionary.
- * REAL: Replace `translateWords` body with Google Cloud Translation API calls.
- *
- * To plug in real Google Translate:
- * 1. Install: pnpm add @google-cloud/translate
- * 2. Set env: GOOGLE_CLOUD_API_KEY=your-key or GOOGLE_APPLICATION_CREDENTIALS
- * 3. Replace mock below with:
- *    const { Translate } = require('@google-cloud/translate').v2;
- *    const translate = new Translate({ key: process.env.GOOGLE_CLOUD_API_KEY });
- *    const [translations] = await translate.translate(texts, { from, to });
+ * Translation Service — translates words.
+ * 
+ * Contains both REAL (Google Translate) and MOCK implementations.
+ * Active implementation: MOCK (until billing is fixed).
  */
 
+import { Translate } from "@google-cloud/translate/build/src/v2/index.js";
 import { logger } from "../lib/logger.js";
 
 export interface TranslatedWord {
   original: string;
   translation: string;
-  pronunciation: string; // phonetic English spelling of Arabic
+  pronunciation: string;
 }
 
-// ──────────────────────────────────────────────────────────────────────────────
-// MOCK DICTIONARY — English → Arabic
-// Extend this or replace with real API
-// ──────────────────────────────────────────────────────────────────────────────
-const EN_AR_DICTIONARY: Record<string, { ar: string; phonetic: string }> = {
-  wait: { ar: "انتظر", phonetic: "intazir" },
-  please: { ar: "من فضلك", phonetic: "min fadlak" },
-  stop: { ar: "توقف", phonetic: "tawaqaf" },
-  running: { ar: "يجري", phonetic: "yajri" },
-  help: { ar: "مساعدة", phonetic: "musa'ada" },
-  need: { ar: "أحتاج", phonetic: "ahtaj" },
-  where: { ar: "أين", phonetic: "ayna" },
-  did: { ar: "فعل", phonetic: "fa'ala" },
-  you: { ar: "أنت", phonetic: "anta" },
-  go: { ar: "اذهب", phonetic: "idhab" },
-  come: { ar: "تعال", phonetic: "ta'al" },
-  back: { ar: "عودة", phonetic: "'awda" },
-  strong: { ar: "قوي", phonetic: "qawi" },
-  power: { ar: "قوة", phonetic: "quwwa" },
-  world: { ar: "عالم", phonetic: "'alam" },
-  dream: { ar: "حلم", phonetic: "hulm" },
-  fight: { ar: "قاتل", phonetic: "qatil" },
-  believe: { ar: "صدق", phonetic: "saddaq" },
-  in: { ar: "في", phonetic: "fi" },
-  yourself: { ar: "نفسك", phonetic: "nafsak" },
-  never: { ar: "أبدا", phonetic: "abadan" },
-  give: { ar: "أعطي", phonetic: "a'ti" },
-  up: { ar: "فوق", phonetic: "fawq" },
-};
+/* ──────────────────────────────────────────────────────────────────────────────
+   REAL IMPLEMENTATION (GOOGLE TRANSLATE) - COMMENTED OUT
+   ──────────────────────────────────────────────────────────────────────────────
 
-/**
- * Translate an array of words from sourceLang to targetLang.
- * Returns a map of original word → translation result.
- */
+function getTranslateClient(): Translate {
+  const jsonStr = process.env["GOOGLE_SERVICE_ACCOUNT_JSON"];
+  if (!jsonStr) {
+    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON environment variable is not set");
+  }
+
+  let credentials: { client_email: string; private_key: string };
+  try {
+    credentials = JSON.parse(jsonStr);
+  } catch {
+    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON");
+  }
+
+  return new Translate({
+    credentials,
+    projectId: (credentials as { project_id?: string }).project_id,
+  });
+}
+
+export async function translateWords_REAL(
+  words: string[],
+  sourceLang: string,
+  targetLang: string
+): Promise<Map<string, TranslatedWord>> {
+  logger.info({ count: words.length, sourceLang, targetLang }, "Translating words with Google Translate");
+
+  const result = new Map<string, TranslatedWord>();
+  if (words.length === 0) return result;
+
+  const client = getTranslateClient();
+  const [translations] = await client.translate(words, {
+    from: sourceLang,
+    to: targetLang,
+  });
+
+  const translationsArray = Array.isArray(translations) ? translations : [translations];
+
+  for (let i = 0; i < words.length; i++) {
+    const original = words[i];
+    const translation = translationsArray[i] ?? original;
+    const pronunciation = original;
+    result.set(original, { original, translation, pronunciation });
+  }
+  return result;
+}
+*/
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   MOCK IMPLEMENTATION (ACTIVE)
+   ────────────────────────────────────────────────────────────────────────────── */
+
 export async function translateWords(
   words: string[],
   sourceLang: string,
   targetLang: string
 ): Promise<Map<string, TranslatedWord>> {
-  logger.info({ count: words.length, sourceLang, targetLang }, "Translating words");
+  logger.info({ count: words.length, sourceLang, targetLang }, "Running MOCK Translation");
+
+  // Simulate network latency
+  await new Promise(resolve => setTimeout(resolve, 500));
 
   const result = new Map<string, TranslatedWord>();
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // MOCK TRANSLATION — lookup from static dictionary
-  // Replace this entire block with Google Translate API calls
-  // ──────────────────────────────────────────────────────────────────────────
-  await new Promise((r) => setTimeout(r, 50)); // simulate async
+  for (const original of words) {
+    // Return a fake Arabic-looking string or prefix
+    const translation = `[AR] ${original}`;
+    const pronunciation = original; // simplified for mock
 
-  for (const word of words) {
-    const key = word.toLowerCase();
-    const entry = EN_AR_DICTIONARY[key];
-
-    if (entry) {
-      result.set(word, {
-        original: word,
-        translation: entry.ar,
-        pronunciation: entry.phonetic,
-      });
-    } else {
-      // Fallback: mark as untranslated but still include it
-      result.set(word, {
-        original: word,
-        translation: `[${word}]`,
-        pronunciation: word,
-      });
-    }
+    result.set(original, { original, translation, pronunciation });
   }
-  // ──────────────────────────────────────────────────────────────────────────
 
+  logger.info({ count: result.size }, "Mock Translation complete");
   return result;
 }

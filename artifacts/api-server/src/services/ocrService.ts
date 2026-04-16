@@ -1,95 +1,109 @@
 /**
  * OCR Service — extracts text and bounding boxes from images.
- *
- * CURRENT: Mock implementation that returns realistic fake data.
- * REAL: Replace the `runOCR` function body with Google Vision API calls.
- *
- * To plug in real Google Vision:
- * 1. Install: pnpm add @google-cloud/vision
- * 2. Set env: GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
- * 3. Replace mock below with:
- *    const client = new vision.ImageAnnotatorClient();
- *    const [result] = await client.textDetection(imageUrl);
- *    const annotations = result.textAnnotations || [];
- *    // annotations[0] is full text, rest are individual words
+ * 
+ * Contains both REAL (Google Vision) and MOCK implementations.
+ * Active implementation: MOCK (until billing is fixed).
  */
 
+import vision from "@google-cloud/vision";
 import { logger } from "../lib/logger.js";
 
 export interface OCRWord {
   text: string;
-  x: number;         // left offset in pixels
-  y: number;         // top offset in pixels
+  x: number;       // left offset in pixels
+  y: number;       // top offset in pixels
   width: number;
   height: number;
 }
 
-/**
- * Extract words and their positions from an image URL.
- * Returns an array of OCR words with bounding boxes.
- */
+/* ──────────────────────────────────────────────────────────────────────────────
+   REAL IMPLEMENTATION (GOOGLE VISION) - COMMENTED OUT
+   ──────────────────────────────────────────────────────────────────────────────
+
+function getVisionClient(): vision.ImageAnnotatorClient {
+  const jsonStr = process.env["GOOGLE_SERVICE_ACCOUNT_JSON"];
+  if (!jsonStr) {
+    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON environment variable is not set");
+  }
+
+  let credentials: object;
+  try {
+    credentials = JSON.parse(jsonStr);
+  } catch {
+    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON");
+  }
+
+  return new vision.ImageAnnotatorClient({ credentials });
+}
+
+export async function runOCR_REAL(imageUrl: string, imageIndex: number): Promise<OCRWord[]> {
+  logger.info({ imageUrl, imageIndex }, "Running Google Vision OCR");
+
+  const client = getVisionClient();
+  const [result] = await client.textDetection(imageUrl);
+  const annotations = result.textAnnotations;
+
+  if (!annotations || annotations.length === 0) {
+    logger.info({ imageIndex }, "No text found in image");
+    return [];
+  }
+
+  const words: OCRWord[] = [];
+  for (let i = 1; i < annotations.length; i++) {
+    const ann = annotations[i];
+    const text = ann.description ?? "";
+    const vertices = ann.boundingPoly?.vertices ?? [];
+    if (!text || vertices.length < 4) continue;
+
+    const xs = vertices.map((v) => v.x ?? 0);
+    const ys = vertices.map((v) => v.y ?? 0);
+    const x = Math.min(...xs);
+    const y = Math.min(...ys);
+    const width = Math.max(...xs) - x;
+    const height = Math.max(...ys) - y;
+    words.push({ text, x, y, width, height });
+  }
+  return words;
+}
+*/
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   MOCK IMPLEMENTATION (ACTIVE)
+   ────────────────────────────────────────────────────────────────────────────── */
+
 export async function runOCR(imageUrl: string, imageIndex: number): Promise<OCRWord[]> {
-  logger.info({ imageUrl, imageIndex }, "Running OCR on image");
+  logger.info({ imageUrl, imageIndex }, "Running MOCK OCR");
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // MOCK OCR — returns realistic Webtoon-style text positions
-  // Replace this entire block with real Google Vision API calls
-  // ──────────────────────────────────────────────────────────────────────────
-  await new Promise((r) => setTimeout(r, 100)); // simulate async
+  // Simulate network latency
+  await new Promise(resolve => setTimeout(resolve, 800));
 
-  const mockWords: OCRWord[][] = [
-    // Image 0 words
-    [
-      { text: "Wait", x: 120, y: 45, width: 60, height: 22 },
-      { text: "please", x: 120, y: 75, width: 80, height: 22 },
-      { text: "stop", x: 200, y: 180, width: 55, height: 22 },
-      { text: "running", x: 200, y: 210, width: 90, height: 22 },
-      { text: "I", x: 155, y: 310, width: 15, height: 22 },
-      { text: "need", x: 155, y: 340, width: 60, height: 22 },
-      { text: "help", x: 155, y: 370, width: 55, height: 22 },
-    ],
-    // Image 1 words
-    [
-      { text: "Where", x: 80, y: 60, width: 75, height: 22 },
-      { text: "did", x: 80, y: 90, width: 45, height: 22 },
-      { text: "you", x: 80, y: 120, width: 45, height: 22 },
-      { text: "go", x: 80, y: 150, width: 35, height: 22 },
-      { text: "Come", x: 250, y: 240, width: 70, height: 22 },
-      { text: "back", x: 250, y: 270, width: 60, height: 22 },
-    ],
-    // Image 2 words
-    [
-      { text: "strong", x: 100, y: 90, width: 80, height: 22 },
-      { text: "power", x: 100, y: 120, width: 70, height: 22 },
-      { text: "world", x: 100, y: 150, width: 65, height: 22 },
-      { text: "dream", x: 180, y: 280, width: 75, height: 22 },
-      { text: "fight", x: 180, y: 310, width: 60, height: 22 },
-    ],
-    // Image 3 words
-    [
-      { text: "believe", x: 140, y: 55, width: 85, height: 22 },
-      { text: "in", x: 140, y: 85, width: 30, height: 22 },
-      { text: "yourself", x: 140, y: 115, width: 90, height: 22 },
-      { text: "never", x: 90, y: 250, width: 65, height: 22 },
-      { text: "give", x: 90, y: 280, width: 55, height: 22 },
-      { text: "up", x: 90, y: 310, width: 35, height: 22 },
-    ],
+  // Return a few fake words for every image
+  const mockWords: OCRWord[] = [
+    { text: "Hello", x: 100, y: 150, width: 80, height: 30 },
+    { text: "World", x: 190, y: 150, width: 85, height: 30 },
+    { text: "Webtoon", x: 50, y: 400, width: 120, height: 40 },
+    { text: "Translate", x: 180, y: 400, width: 140, height: 40 },
+    { text: "Story", x: 400, y: 50, width: 100, height: 35 },
   ];
 
-  // Cycle through mock data based on image index
-  const words = mockWords[imageIndex % mockWords.length] ?? mockWords[0];
-  return words as OCRWord[];
-  // ──────────────────────────────────────────────────────────────────────────
+  if (imageIndex % 2 === 0) {
+    mockWords.push({ text: "Panel", x: 300, y: 600, width: 90, height: 30 });
+  }
+
+  logger.info({ imageIndex, wordCount: mockWords.length }, "Mock OCR complete");
+  return mockWords;
 }
 
 /**
  * Filter out noise from OCR results.
- * Removes single characters, numbers, and short tokens that aren't useful to translate.
+ * Keeps only alphabetic English words with 2+ characters.
  */
 export function filterWords(words: OCRWord[]): OCRWord[] {
   return words.filter((w) => {
-    const cleaned = w.text.trim();
-    // Keep only alphabetic words with 2+ characters
-    return /^[a-zA-Z]{2,}$/.test(cleaned);
-  });
+    const cleaned = w.text.trim().replace(/[^a-zA-Z]/g, "");
+    return cleaned.length >= 2;
+  }).map((w) => ({
+    ...w,
+    text: w.text.replace(/[^a-zA-Z'-]/g, "").trim(),
+  })).filter((w) => w.text.length >= 2);
 }

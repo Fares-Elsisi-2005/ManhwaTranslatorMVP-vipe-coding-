@@ -222,6 +222,77 @@ export function playPronunciation(englishWord: string, _pronunciation: string): 
   window.speechSynthesis.speak(engUtterance);
 }
 
+const PROCESSING_OVERLAY_ID = "wt-processing-overlay";
+
+/**
+ * Show a processing overlay on the page to track progress.
+ * Matches the design from Slide 5.
+ */
+export function showProcessingOverlay(processed: number, total: number, onCancel?: () => void): void {
+  let overlay = document.getElementById(PROCESSING_OVERLAY_ID);
+
+  if (!overlay) {
+    overlay = document.createElement("div");
+    overlay.id = PROCESSING_OVERLAY_ID;
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(99, 102, 241, 0.1);
+      backdrop-filter: blur(4px);
+      z-index: 100000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    `;
+    document.body.appendChild(overlay);
+  }
+
+  overlay.innerHTML = `
+    <div style="
+      background: #6366f1;
+      width: 320px;
+      padding: 32px;
+      border-radius: 24px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+      text-align: center;
+      color: white;
+    ">
+      <div style="font-size: 14px; font-weight: 500; margin-bottom: 8px; opacity: 0.9;">webtoon translator</div>
+      <h2 style="font-size: 20px; margin: 0 0 24px 0; font-weight: 600;">Processing images ...</h2>
+      
+      <div style="font-size: 32px; font-weight: 700; margin-bottom: 32px;">
+        ${processed}/${total}
+      </div>
+
+      <button id="wt-cancel-btn" style="
+        background: #f472b6;
+        color: white;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 32px;
+        font-size: 18px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.1s;
+      ">cancel</button>
+    </div>
+  `;
+
+  document.getElementById("wt-cancel-btn")?.addEventListener("click", () => {
+    onCancel?.();
+    removeProcessingOverlay();
+  });
+}
+
+/** Remove the processing overlay */
+export function removeProcessingOverlay(): void {
+  document.getElementById(PROCESSING_OVERLAY_ID)?.remove();
+}
+
 /** Remove all overlays from the page */
 export function removeAllOverlays(): void {
   document.querySelectorAll(`.${OVERLAY_CONTAINER_CLASS}`).forEach((container) => {
@@ -230,5 +301,6 @@ export function removeAllOverlays(): void {
     container.remove();
   });
   document.getElementById(POPUP_ID)?.remove();
+  removeProcessingOverlay();
   overlaidImages.clear();
 }

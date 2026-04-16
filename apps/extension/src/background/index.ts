@@ -1,17 +1,11 @@
 /**
- * Background Service Worker (Manifest V3).
- * Handles extension lifecycle events and icon badge updates.
+ * Background script — handles side panel and global events.
  */
 
-// Listen for extension install/update
-chrome.runtime.onInstalled.addListener(() => {
-  console.log("WebtoonTranslate extension installed");
-});
+chrome.sidePanel
+  .setPanelBehavior({ openPanelOnActionClick: true })
+  .catch((error) => console.error(error));
 
-// Forward messages between popup and content script
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  // Messages are handled directly by content script and popup
-  // Background just acknowledges
-  sendResponse({ ok: true });
-  return true;
+chrome.runtime.onInstalled.addListener(() => {
+  console.log("[WebtoonTranslate] Background service worker installed");
 });

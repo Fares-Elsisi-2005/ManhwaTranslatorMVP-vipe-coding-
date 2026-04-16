@@ -6,13 +6,15 @@
  * - Progress tracking
  * - Overlay rendering
  * - Cache check/save
+ * - PDF download
  */
 
 import type { ExtensionMessage, ContentScriptState, DetectedImage, EpisodeResult } from "../types.js";
 import { detectEpisodeImages, triggerLazyLoad } from "./detector.js";
-import { renderAllOverlays, removeAllOverlays } from "./overlay.js";
+import { renderAllOverlays, removeAllOverlays, showProcessingOverlay, removeProcessingOverlay } from "./overlay.js";
 import { saveResult, loadResult } from "../storage/indexedDB.js";
 import { prepareSession, uploadChunk, completeUpload, getStatus, getResult, imageToBase64 } from "../api/client.js";
+import { downloadEpisodeAsPDF } from "./pdfDownloader.js";
 
 // Current state of the content script
 let state: ContentScriptState = { phase: "idle" };
@@ -22,6 +24,19 @@ let detectedImages: DetectedImage[] = [];
 /** Update state and notify popup if it's open */
 function setState(newState: ContentScriptState) {
   state = newState;
+
+  // Show/Update page overlay during processing
+  if (state.phase === "processing") {
+    showProcessingOverlay(state.processed, state.total, () => {
+      cancelRequested = true;
+      setState({ phase: "idle" });
+      removeAllOverlays();
+    });
+  } else if (state.phase !== "processing" && state.phase !== "detecting") {
+    // Hide overlay when not processing (but keep it hidden during detecting too)
+    removeProcessingOverlay();
+  }
+
   try {
     chrome.runtime.sendMessage({ type: "STATE_UPDATE", state } satisfies ExtensionMessage).catch(() => {});
   } catch {
@@ -32,7 +47,7 @@ function setState(newState: ContentScriptState) {
 // Listen for messages from the popup
 chrome.runtime.onMessage.addListener((message: ExtensionMessage, _sender, sendResponse) => {
   handleMessage(message, sendResponse);
-  return true; // Keep the message channel open for async responses
+  return true; // Keep channel open for async responses
 });
 
 async function handleMessage(message: ExtensionMessage, sendResponse: (r: unknown) => void) {
@@ -63,6 +78,12 @@ async function handleMessage(message: ExtensionMessage, sendResponse: (r: unknow
       break;
     }
 
+    case "DOWNLOAD_PDF": {
+      sendResponse({ ok: true });
+      await runPDFDownload();
+      break;
+    }
+
     default:
       sendResponse({ ok: false });
   }
@@ -72,11 +93,10 @@ async function handleMessage(message: ExtensionMessage, sendResponse: (r: unknow
 async function runDetection() {
   setState({ phase: "detecting" });
 
-  // Trigger lazy-load to ensure all images are present
+  // Trigger lazy-load to ensure all images are present in DOM
   await triggerLazyLoad();
 
   detectedImages = detectEpisodeImages();
-
   setState({ phase: "detected", images: detectedImages });
 }
 
@@ -87,11 +107,13 @@ async function runTranslation(
   targetLang: string
 ) {
   cancelRequested = false;
+  console.log("[WebtoonTranslate] Starting translation for indices:", selectedIndices);
 
   const episodeUrl = window.location.href;
   const selected = detectedImages.filter((img) => selectedIndices.includes(img.index));
 
   if (selected.length === 0) {
+    console.error("[WebtoonTranslate] No images selected or detected.");
     setState({ phase: "error", error: "No images selected" });
     return;
   }
@@ -106,69 +128,115 @@ async function runTranslation(
   }
 
   // ── Fresh processing ───────────────────────────────────────────────────────
+  console.log("[WebtoonTranslate] Fresh processing started for", selected.length, "images");
   setState({ phase: "processing", processed: 0, total: selected.length });
 
   try {
-    // Create session
+    console.log("[WebtoonTranslate] Preparing session...");
     const { sessionId } = await prepareSession(episodeUrl, selected.length, sourceLang, targetLang);
+    console.log("[WebtoonTranslate] Session prepared:", sessionId);
 
-    // Upload images in chunks of 3
+    // Upload in chunks of 3
     const CHUNK_SIZE = 3;
     let processedCount = 0;
 
     for (let i = 0; i < selected.length; i += CHUNK_SIZE) {
       if (cancelRequested) {
+        console.log("[WebtoonTranslate] Cancel requested");
         setState({ phase: "idle" });
         return;
       }
 
       const chunkImages = selected.slice(i, i + CHUNK_SIZE);
+      console.log(`[WebtoonTranslate] Processing chunk ${Math.floor(i/CHUNK_SIZE) + 1}...`);
 
-      // Convert each image to base64
       const base64Items = await Promise.all(
-        chunkImages.map(async (img) => ({
-          imageIndex: img.index,
-          base64: await imageToBase64(img.src).catch(() => ""),
-        }))
+        chunkImages.map(async (img) => {
+          console.log(`[WebtoonTranslate] Converting image ${img.index} to base64...`);
+          try {
+            const b64 = await imageToBase64(img.src);
+            console.log(`[WebtoonTranslate] Image ${img.index} conversion successful`);
+            return {
+              imageIndex: img.index,
+              base64: b64,
+            };
+          } catch (e) {
+            console.error(`[WebtoonTranslate] Failed to convert image ${img.index}:`, e);
+            return { imageIndex: img.index, base64: "" };
+          }
+        })
       );
 
-      // Skip items where conversion failed
       const validItems = base64Items.filter((item) => item.base64 !== "");
-
-      await uploadChunk(sessionId, validItems);
+      if (validItems.length > 0) {
+        console.log(`[WebtoonTranslate] Uploading chunk with ${validItems.length} images...`);
+        await uploadChunk(sessionId, validItems);
+      }
 
       processedCount += chunkImages.length;
       setState({ phase: "processing", processed: processedCount, total: selected.length });
     }
 
-    // Signal upload complete
+    console.log("[WebtoonTranslate] All chunks uploaded. Finalizing...");
     await completeUpload(sessionId);
 
-    // Poll for completion
+    console.log("[WebtoonTranslate] Polling for results...");
     const result = await pollUntilComplete(sessionId);
-
     if (!result) {
+      console.error("[WebtoonTranslate] Polling failed or returned null");
       setState({ phase: "error", error: "Processing failed or was cancelled" });
       return;
     }
 
-    // Save to cache
+    console.log("[WebtoonTranslate] Processing complete! Rendering overlays.");
     await saveResult(result);
-
-    // Render overlays
     renderAllOverlays(result.images);
-
     setState({ phase: "complete", result });
+
   } catch (err) {
+    console.error("[WebtoonTranslate] Pipeline error:", err);
     const error = err instanceof Error ? err.message : "Unknown error";
     setState({ phase: "error", error });
   }
 }
 
+/** PDF download — runs in the page context using jsPDF */
+async function runPDFDownload() {
+  try {
+    // If no images detected yet, trigger detection first
+    if (detectedImages.length === 0) {
+      await triggerLazyLoad();
+      detectedImages = detectEpisodeImages();
+    }
+
+    await downloadEpisodeAsPDF((progress) => {
+      // Relay progress to popup
+      try {
+        chrome.runtime.sendMessage({
+          type: "PDF_PROGRESS",
+          loaded: progress.loaded,
+          total: progress.total,
+          phase: progress.phase,
+        } satisfies ExtensionMessage).catch(() => {});
+      } catch { /* popup closed */ }
+    });
+
+    try {
+      chrome.runtime.sendMessage({ type: "PDF_DONE" } satisfies ExtensionMessage).catch(() => {});
+    } catch { /* popup closed */ }
+
+  } catch (err) {
+    const error = err instanceof Error ? err.message : "Unknown error";
+    try {
+      chrome.runtime.sendMessage({ type: "PDF_ERROR", error } satisfies ExtensionMessage).catch(() => {});
+    } catch { /* popup closed */ }
+  }
+}
+
 /** Poll the backend until processing is complete */
 async function pollUntilComplete(sessionId: string): Promise<EpisodeResult | null> {
-  const MAX_POLLS = 120; // 2 minutes max
-  const POLL_INTERVAL = 1000; // 1s
+  const MAX_POLLS = 180; // 3 minutes max
+  const POLL_INTERVAL = 1000;
 
   for (let i = 0; i < MAX_POLLS; i++) {
     if (cancelRequested) return null;
@@ -185,7 +253,6 @@ async function pollUntilComplete(sessionId: string): Promise<EpisodeResult | nul
       throw new Error(status.error ?? "Processing error");
     }
 
-    // Update progress
     setState({
       phase: "processing",
       processed: status.processedImages,

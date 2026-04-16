@@ -1,88 +1,134 @@
 /**
  * Image detector — finds all Webtoon episode images on the page.
  *
- * Webtoon loads images in a specific structure:
- * - Images are in .viewer_img or [class*="viewer"] containers
- * - Uses lazy loading (IntersectionObserver or data-src attributes)
- * - Images are vertical strips stacked in order
+ * Based on the proven selector from the Webtoon PDF downloader script:
+ *   document.querySelectorAll("img._images")
+ *   with dataset.url or img.src, filtered to webtoon-phinf.pstatic.net
+ *
+ * Falls back to broader selectors for other Webtoon page layouts.
  */
 
 import type { DetectedImage } from "../types.js";
 
-// Selectors for Webtoon episode images
-const WEBTOON_SELECTORS = [
+/** Primary selector — exact match from Webtoon's DOM */
+const PRIMARY_SELECTOR = "img._images";
+
+/** CDN domain that Webtoon uses for episode images */
+const WEBTOON_CDN = "webtoon-phinf.pstatic.net";
+
+/** Fallback selectors for different Webtoon page layouts */
+const FALLBACK_SELECTORS = [
   ".viewer_img img",
   "#_imageList img",
-  ".viewer_img",
   "img[data-url]",
   "#content img",
-  // Fallback: large images (episode panels are tall)
-  "img",
 ];
 
 /**
+ * Get the real src of a Webtoon image element.
+ * Webtoon uses data-url for lazy loading instead of the src attribute.
+ */
+function getImageSrc(img: HTMLImageElement): string {
+  return (
+    img.dataset["url"] ||     // lazy-loaded URL (primary)
+    img.getAttribute("data-url") ||
+    img.src ||
+    ""
+  );
+}
+
+/**
+ * Check if a URL is a Webtoon episode image (not a UI asset).
+ */
+function isEpisodeImage(src: string): boolean {
+  if (!src || src.startsWith("data:")) return false;
+  // Primary check: Webtoon's CDN
+  if (src.includes(WEBTOON_CDN)) return true;
+  // Fallback: any large image URL with common image extensions
+  return /\.(jpg|jpeg|png|webp)/i.test(src);
+}
+
+/**
  * Find all episode images on the current page.
- * Returns them sorted by their vertical position (top to bottom).
+ * Returns them sorted by their vertical DOM position (top to bottom).
  */
 export function detectEpisodeImages(): DetectedImage[] {
+  console.log("[WebtoonTranslate] Running image detection...");
   let images: HTMLImageElement[] = [];
 
-  // Try each selector until we find images
-  for (const selector of WEBTOON_SELECTORS) {
-    const found = Array.from(document.querySelectorAll<HTMLImageElement>(selector));
+  // ── Try primary selector first (exact match from Webtoon DOM) ─────────────
+  const primary = Array.from(
+    document.querySelectorAll<HTMLImageElement>(PRIMARY_SELECTOR)
+  ).filter((img) => isEpisodeImage(getImageSrc(img)));
 
-    // Filter for episode images: large height, valid src, visible
-    const episodeImages = found.filter((img) => {
-      // Must have a source
-      const src = img.src || img.dataset["url"] || "";
-      if (!src || src.startsWith("data:")) return false;
+  if (primary.length >= 1) {
+    console.log(`[WebtoonTranslate] Found ${primary.length} images using primary selector.`);
+    images = primary;
+  } else {
+    console.log("[WebtoonTranslate] Primary selector failed, trying fallbacks...");
+    // ── Fallback selectors ───────────────────────────────────────────────────
+    for (const selector of FALLBACK_SELECTORS) {
+      const found = Array.from(
+        document.querySelectorAll<HTMLImageElement>(selector)
+      ).filter((img) => {
+        const src = getImageSrc(img);
+        if (!isEpisodeImage(src)) return false;
+        // Must be a real episode panel (tall image, not a UI icon)
+        return img.naturalHeight > 100 || img.offsetHeight > 100;
+      });
 
-      // Must be a real image (not icon/UI element) — episode panels are tall
-      const rect = img.getBoundingClientRect();
-      const naturalH = img.naturalHeight;
-
-      // Allow images that are large naturally, even if not yet scrolled into view
-      return naturalH > 200 || rect.height > 100;
-    });
-
-    if (episodeImages.length >= 2) {
-      images = episodeImages;
-      break;
+      if (found.length >= 1) {
+        console.log(`[WebtoonTranslate] Found ${found.length} images using fallback: ${selector}`);
+        images = found;
+        break;
+      }
     }
   }
 
-  // Sort by vertical DOM position
+  if (images.length === 0) {
+    console.warn("[WebtoonTranslate] No images found with any selector!");
+  }
+
+  // Remove duplicates by src
+  const seen = new Set<string>();
+  images = images.filter((img) => {
+    const src = getImageSrc(img);
+    if (seen.has(src)) return false;
+    seen.add(src);
+    return true;
+  });
+
+  // Sort by vertical DOM position (top → bottom reading order)
   images.sort((a, b) => {
     const aTop = a.getBoundingClientRect().top + window.scrollY;
     const bTop = b.getBoundingClientRect().top + window.scrollY;
     return aTop - bTop;
   });
 
-  // Map to DetectedImage format
   return images.map((img, index) => ({
     index,
-    src: img.src || img.dataset["url"] || img.getAttribute("data-src") || "",
+    src: getImageSrc(img),
     naturalWidth: img.naturalWidth || 800,
     naturalHeight: img.naturalHeight || 600,
-    selected: true, // all selected by default
+    selected: true,
   }));
 }
 
 /**
- * Wait for lazy-loaded images to load.
- * Scrolls through the page to trigger IntersectionObserver.
+ * Trigger lazy loading by scrolling through the full page.
+ * Webtoon uses IntersectionObserver — images only get their real src
+ * once they scroll into view.
  */
 export async function triggerLazyLoad(): Promise<void> {
-  // Scroll to bottom to trigger lazy loading
   const pageHeight = document.documentElement.scrollHeight;
-  const step = window.innerHeight;
+  const step = Math.floor(window.innerHeight * 0.8);
 
   for (let pos = 0; pos <= pageHeight; pos += step) {
     window.scrollTo(0, pos);
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 120));
   }
 
   // Scroll back to top
   window.scrollTo(0, 0);
-  await new Promise((r) => setTimeout(r, 200));
+  await new Promise((r) => setTimeout(r, 300));
 }

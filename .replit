@@ -26,3 +26,9 @@ externalPort = 80
 [[ports]]
 localPort = 8081
 externalPort = 8081
+
+[userenv]
+
+[userenv.shared]
+CLOUDINARY_CLOUD_NAME = "dbh4fdo5h"
+CLOUDINARY_API_KEY = "987182997339799"

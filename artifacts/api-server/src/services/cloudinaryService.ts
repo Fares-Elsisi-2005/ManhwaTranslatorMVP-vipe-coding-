@@ -1,53 +1,61 @@
 /**
- * Cloudinary Service — upload base64 images to temporary cloud storage.
+ * Cloudinary Service — upload images to temporary cloud storage.
+ * Uses real Cloudinary SDK.
  *
- * CURRENT: Mock implementation — returns a fake URL without uploading.
- * REAL: Replace `uploadImage` body with actual Cloudinary SDK calls.
- *
- * To plug in real Cloudinary:
- * 1. Install: pnpm add cloudinary
- * 2. Set envs: CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
- * 3. Replace mock below with:
- *    import { v2 as cloudinary } from 'cloudinary';
- *    cloudinary.config({ cloud_name, api_key, api_secret });
- *    const result = await cloudinary.uploader.upload(base64DataUri, {
- *      folder: 'webtoon-translator',
- *      resource_type: 'image',
- *    });
- *    return result.secure_url;
- * 4. For cleanup, call: cloudinary.uploader.destroy(publicId)
+ * Required env vars:
+ *   CLOUDINARY_CLOUD_NAME
+ *   CLOUDINARY_API_KEY
+ *   CLOUDINARY_API_SECRET
  */
 
+import { v2 as cloudinary } from "cloudinary";
 import { logger } from "../lib/logger.js";
 
+// Configure Cloudinary from environment variables
+cloudinary.config({
+  cloud_name: process.env["CLOUDINARY_CLOUD_NAME"],
+  api_key: process.env["CLOUDINARY_API_KEY"],
+  api_secret: process.env["CLOUDINARY_API_SECRET"],
+  secure: true,
+});
+
 /**
- * Upload a base64-encoded image and return its public URL.
- * The URL is used by the OCR service to fetch the image for processing.
+ * Upload a base64-encoded image to Cloudinary and return its public URL.
+ * Images are stored in the 'webtoon-translator' folder for easy cleanup.
  */
-export async function uploadImage(base64Data: string, sessionId: string, imageIndex: number): Promise<string> {
-  logger.info({ sessionId, imageIndex }, "Uploading image to storage");
+export async function uploadImage(
+  base64Data: string,
+  sessionId: string,
+  imageIndex: number
+): Promise<string> {
+  logger.info({ sessionId, imageIndex }, "Uploading image to Cloudinary");
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // MOCK UPLOAD — returns a placeholder URL
-  // Replace this block with real Cloudinary upload
-  // ──────────────────────────────────────────────────────────────────────────
-  await new Promise((r) => setTimeout(r, 80)); // simulate upload latency
+  // Cloudinary accepts data URIs directly
+  const dataUri = base64Data.startsWith("data:")
+    ? base64Data
+    : `data:image/jpeg;base64,${base64Data}`;
 
-  // In the mock, we just return a fake URL.
-  // Real implementation returns the Cloudinary secure_url.
-  const mockUrl = `https://res.cloudinary.com/mock/image/upload/webtoon/${sessionId}_${imageIndex}.jpg`;
-  
-  logger.info({ mockUrl, imageIndex }, "Image uploaded (mock)");
-  return mockUrl;
-  // ──────────────────────────────────────────────────────────────────────────
+  const result = await cloudinary.uploader.upload(dataUri, {
+    folder: "webtoon-translator",
+    public_id: `${sessionId}_${imageIndex}`,
+    resource_type: "image",
+    overwrite: true,
+    // Auto-expire after 1 hour — we only need it for OCR
+    invalidate: true,
+  });
+
+  logger.info({ url: result.secure_url, imageIndex }, "Image uploaded to Cloudinary");
+  return result.secure_url;
 }
 
 /**
- * Delete an image from Cloudinary after processing (cleanup).
- * Called when a session completes or is cancelled.
+ * Delete an uploaded image from Cloudinary (cleanup after session completes).
  */
-export async function deleteImage(imageUrl: string): Promise<void> {
-  // MOCK: no-op
-  // Real: extract publicId from URL, call cloudinary.uploader.destroy(publicId)
-  logger.info({ imageUrl }, "Image deleted from storage (mock)");
+export async function deleteImage(publicId: string): Promise<void> {
+  try {
+    await cloudinary.uploader.destroy(publicId);
+    logger.info({ publicId }, "Cloudinary image deleted");
+  } catch (err) {
+    logger.warn({ publicId, err }, "Failed to delete Cloudinary image");
+  }
 }

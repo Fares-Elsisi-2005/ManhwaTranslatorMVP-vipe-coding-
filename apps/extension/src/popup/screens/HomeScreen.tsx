@@ -153,18 +153,106 @@ export function HomeScreen({ onStartDetection, isDetecting }: Props) {
         >
           {isDetecting ? (
             <>
-              <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⟳</span>
+              <span style={{ animation: "wt-spin 0.8s linear infinite", display: "inline-block" }}>⟳</span>
               Detecting images...
             </>
           ) : (
             <>🔍 Start Detection</>
           )}
         </button>
+
+        {/* PDF Download Button */}
+        <DownloadPDFButton />
       </div>
+
+      <style>{`@keyframes wt-spin { to { transform: rotate(360deg); } }`}</style>
 
       {/* Bottom nav */}
       <BottomNav />
     </div>
+  );
+}
+
+function DownloadPDFButton() {
+  const [state, setState] = useState<"idle" | "working" | "done" | "error">("idle");
+  const [progress, setProgress] = useState({ loaded: 0, total: 0, phase: "" });
+
+  // Listen for PDF events from the content script
+  React.useEffect(() => {
+    const listener = (msg: { type: string; loaded?: number; total?: number; phase?: string; error?: string }) => {
+      if (msg.type === "PDF_PROGRESS") {
+        setState("working");
+        setProgress({ loaded: msg.loaded ?? 0, total: msg.total ?? 0, phase: msg.phase ?? "" });
+      } else if (msg.type === "PDF_DONE") {
+        setState("done");
+        setTimeout(() => setState("idle"), 3000);
+      } else if (msg.type === "PDF_ERROR") {
+        setState("error");
+        setTimeout(() => setState("idle"), 3000);
+      }
+    };
+    chrome.runtime.onMessage.addListener(listener);
+    return () => chrome.runtime.onMessage.removeListener(listener);
+  }, []);
+
+  function handleClick() {
+    setState("working");
+    setProgress({ loaded: 0, total: 0, phase: "loading" });
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tab = tabs[0];
+      if (!tab?.id) { setState("error"); return; }
+      chrome.tabs.sendMessage(tab.id, { type: "DOWNLOAD_PDF" }, () => {
+        if (chrome.runtime.lastError) {
+          setState("error");
+          setTimeout(() => setState("idle"), 3000);
+        }
+      });
+    });
+  }
+
+  const label = () => {
+    if (state === "working") {
+      if (progress.phase === "loading" && progress.total > 0)
+        return `Loading ${progress.loaded}/${progress.total}...`;
+      if (progress.phase === "rendering") return "Building PDF...";
+      if (progress.phase === "saving") return "Saving...";
+      return "Preparing...";
+    }
+    if (state === "done") return "✓ PDF Downloaded!";
+    if (state === "error") return "Failed — try again";
+    return "⬇ Download Episode as PDF";
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={state === "working"}
+      style={{
+        width: "100%",
+        padding: "12px",
+        background:
+          state === "done" ? "linear-gradient(135deg, #10b981, #059669)"
+          : state === "error" ? "rgba(239,68,68,0.2)"
+          : "#1e293b",
+        color: state === "error" ? "#ef4444" : "#94a3b8",
+        border: `1px solid ${state === "error" ? "rgba(239,68,68,0.4)" : "#334155"}`,
+        borderRadius: 12,
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: state === "working" ? "not-allowed" : "pointer",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        transition: "all 0.2s",
+        opacity: state === "working" ? 0.7 : 1,
+      }}
+    >
+      {state === "working" && (
+        <span style={{ display: "inline-block", animation: "wt-spin 0.8s linear infinite" }}>⟳</span>
+      )}
+      {label()}
+    </button>
   );
 }
 

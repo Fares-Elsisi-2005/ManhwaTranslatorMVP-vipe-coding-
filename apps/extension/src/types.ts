@@ -50,6 +50,10 @@ export type ExtensionMessage =
   | { type: "TRANSLATION_COMPLETE"; result: EpisodeResult }
   | { type: "TRANSLATION_ERROR"; error: string }
   | { type: "CANCEL_TRANSLATION" }
+  | { type: "DOWNLOAD_PDF" }
+  | { type: "PDF_PROGRESS"; loaded: number; total: number; phase: string }
+  | { type: "PDF_DONE" }
+  | { type: "PDF_ERROR"; error: string }
   | { type: "GET_STATE" }
   | { type: "STATE_UPDATE"; state: ContentScriptState };
 
