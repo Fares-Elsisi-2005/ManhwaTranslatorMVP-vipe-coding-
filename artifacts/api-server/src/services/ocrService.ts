@@ -1,97 +1,50 @@
 /**
  * OCR Service — extracts text and bounding boxes from images.
  * 
- * Contains both REAL (Google Vision) and MOCK implementations.
- * Active implementation: MOCK (until billing is fixed).
+ * Uses standalone OCR provider at OCR_PROVIDER_URL.
  */
 
-import vision from "@google-cloud/vision";
 import { logger } from "../lib/logger.js";
 
 export interface OCRWord {
   text: string;
   x: number;       // left offset in pixels
   y: number;       // top offset in pixels
-  width: number;
-  height: number;
+  width: number;       // width in pixels
+  height: number;      // height in pixels
 }
 
-/* ──────────────────────────────────────────────────────────────────────────────
-   REAL IMPLEMENTATION (GOOGLE VISION) - COMMENTED OUT
-   ──────────────────────────────────────────────────────────────────────────────
+/**
+ * Run OCR on a batch of image URLs.
+ * Max 3 images per request (provider limit).
+ * Returns an array of word lists, one for each image.
+ */
+export async function runOCR(imageUrls: string[]): Promise<OCRWord[][]> {
+  const url = process.env["OCR_PROVIDER_URL"] || "http://localhost:3000/ocr";
+  
+  logger.info({ count: imageUrls.length, url }, "Calling OCR provider");
 
-function getVisionClient(): vision.ImageAnnotatorClient {
-  const jsonStr = process.env["GOOGLE_SERVICE_ACCOUNT_JSON"];
-  if (!jsonStr) {
-    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON environment variable is not set");
+  if (imageUrls.length > 3) {
+    throw new Error("OCR provider limit exceeded: max 3 images allowed per request");
   }
 
-  let credentials: object;
-  try {
-    credentials = JSON.parse(jsonStr);
-  } catch {
-    throw new Error("GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON");
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ images: imageUrls }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => "Unknown error");
+    logger.error({ status: response.status, errorBody }, "OCR provider request failed");
+    throw new Error(`OCR provider failed with status ${response.status}`);
   }
 
-  return new vision.ImageAnnotatorClient({ credentials });
-}
+  const data = await response.json() as { results: Array<{ words: OCRWord[] }> };
+  
+  logger.info({ resultCount: data.results?.length }, "OCR provider response received");
 
-export async function runOCR_REAL(imageUrl: string, imageIndex: number): Promise<OCRWord[]> {
-  logger.info({ imageUrl, imageIndex }, "Running Google Vision OCR");
-
-  const client = getVisionClient();
-  const [result] = await client.textDetection(imageUrl);
-  const annotations = result.textAnnotations;
-
-  if (!annotations || annotations.length === 0) {
-    logger.info({ imageIndex }, "No text found in image");
-    return [];
-  }
-
-  const words: OCRWord[] = [];
-  for (let i = 1; i < annotations.length; i++) {
-    const ann = annotations[i];
-    const text = ann.description ?? "";
-    const vertices = ann.boundingPoly?.vertices ?? [];
-    if (!text || vertices.length < 4) continue;
-
-    const xs = vertices.map((v) => v.x ?? 0);
-    const ys = vertices.map((v) => v.y ?? 0);
-    const x = Math.min(...xs);
-    const y = Math.min(...ys);
-    const width = Math.max(...xs) - x;
-    const height = Math.max(...ys) - y;
-    words.push({ text, x, y, width, height });
-  }
-  return words;
-}
-*/
-
-/* ──────────────────────────────────────────────────────────────────────────────
-   MOCK IMPLEMENTATION (ACTIVE)
-   ────────────────────────────────────────────────────────────────────────────── */
-
-export async function runOCR(imageUrl: string, imageIndex: number): Promise<OCRWord[]> {
-  logger.info({ imageUrl, imageIndex }, "Running MOCK OCR");
-
-  // Simulate network latency
-  await new Promise(resolve => setTimeout(resolve, 800));
-
-  // Return a few fake words for every image
-  const mockWords: OCRWord[] = [
-    { text: "Hello", x: 100, y: 150, width: 80, height: 30 },
-    { text: "World", x: 190, y: 150, width: 85, height: 30 },
-    { text: "Webtoon", x: 50, y: 400, width: 120, height: 40 },
-    { text: "Translate", x: 180, y: 400, width: 140, height: 40 },
-    { text: "Story", x: 400, y: 50, width: 100, height: 35 },
-  ];
-
-  if (imageIndex % 2 === 0) {
-    mockWords.push({ text: "Panel", x: 300, y: 600, width: 90, height: 30 });
-  }
-
-  logger.info({ imageIndex, wordCount: mockWords.length }, "Mock OCR complete");
-  return mockWords;
+  return data.results.map(r => r.words);
 }
 
 /**
@@ -100,10 +53,12 @@ export async function runOCR(imageUrl: string, imageIndex: number): Promise<OCRW
  */
 export function filterWords(words: OCRWord[]): OCRWord[] {
   return words.filter((w) => {
+    // Basic cleanup for English characters
     const cleaned = w.text.trim().replace(/[^a-zA-Z]/g, "");
     return cleaned.length >= 2;
   }).map((w) => ({
     ...w,
+    // Strip punctuation from the word text itself
     text: w.text.replace(/[^a-zA-Z'-]/g, "").trim(),
   })).filter((w) => w.text.length >= 2);
 }
