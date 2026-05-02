@@ -3,9 +3,7 @@
   "name": "WebtoonTranslate",
   "version": "1.0.0",
   "description": "Translate Webtoon episodes word by word — English to Arabic",
-  "action": {
-    "default_popup": "popup.html"
-  },
+  "action": {},
   "background": {
     "service_worker": "background.js",
     "type": "module"

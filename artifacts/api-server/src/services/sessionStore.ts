@@ -47,6 +47,19 @@ export interface Session {
 // In-memory map: sessionId → Session
 const sessions = new Map<string, Session>();
 
+const SESSION_TTL_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+function evictExpiredSessions(): void {
+  const cutoff = Date.now() - SESSION_TTL_MS;
+  for (const [id, session] of sessions) {
+    if (session.updatedAt.getTime() < cutoff) {
+      sessions.delete(id);
+    }
+  }
+}
+
+setInterval(evictExpiredSessions, 10 * 60 * 1000); // every 10 minutes
+
 /** Create a new session and return its ID */
 export function createSession(
   sessionId: string,
@@ -82,6 +95,21 @@ export function updateSession(sessionId: string, updates: Partial<Session>): Ses
   if (!session) return undefined;
 
   const updated = { ...session, ...updates, updatedAt: new Date() };
+  sessions.set(sessionId, updated);
+  return updated;
+}
+
+/** Append a result to a session atomically */
+export function appendResult(sessionId: string, result: ImageResult): Session | undefined {
+  const session = sessions.get(sessionId);
+  if (!session) return undefined;
+
+  const updated = {
+    ...session,
+    results: [...session.results, result],
+    processedImages: session.processedImages + 1,
+    updatedAt: new Date(),
+  };
   sessions.set(sessionId, updated);
   return updated;
 }

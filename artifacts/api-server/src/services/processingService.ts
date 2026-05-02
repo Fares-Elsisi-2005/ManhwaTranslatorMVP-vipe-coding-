@@ -5,7 +5,7 @@
 import { uploadImage } from "./cloudinaryService.js";
 import { runOCR, filterWords } from "./ocrService.js";
 import { translateWords } from "./translationService.js";
-import { getSession, updateSession, type ImageResult } from "./sessionStore.js";
+import { getSession, updateSession, appendResult, type ImageResult } from "./sessionStore.js";
 import { logger } from "../lib/logger.js";
 
 export interface ChunkItem {
@@ -13,11 +13,29 @@ export interface ChunkItem {
   base64: string;       // base64-encoded image data
 }
 
+const sessionQueues = new Map<string, Promise<void>>();
+
 /**
  * Process a single chunk of images.
  * Updates the session store as each image is processed.
  */
 export async function processChunk(
+  sessionId: string,
+  items: ChunkItem[]
+): Promise<void> {
+  const prev = sessionQueues.get(sessionId) ?? Promise.resolve();
+  const next = prev
+    .then(() => _processChunkInternal(sessionId, items))
+    .catch((err) => {
+      logger.error({ sessionId, err }, "Error processing chunk in queue");
+      updateSession(sessionId, { status: "error", error: err.message });
+    });
+  
+  sessionQueues.set(sessionId, next.catch(() => {}));
+  return next;
+}
+
+async function _processChunkInternal(
   sessionId: string,
   items: ChunkItem[]
 ): Promise<void> {
@@ -34,9 +52,16 @@ export async function processChunk(
       updateSession(sessionId, { status: "processing" });
     }
 
+    // Filter out invalid base64 items
+    const validItems = items.filter(item => item.base64 && item.base64.length > 10);
+    if (validItems.length === 0) {
+      logger.warn({ sessionId }, "All items in chunk are invalid base64");
+      return;
+    }
+
     // ── STEP 1: Upload all images in chunk to Cloudinary ────────────────────
     const uploads: Array<{ index: number; url: string }> = [];
-    for (const item of items) {
+    for (const item of validItems) {
       logger.info({ sessionId, index: item.imageIndex }, "Uploading image to Cloudinary");
       const url = await uploadImage(item.base64, sessionId, item.imageIndex);
       uploads.push({ index: item.imageIndex, url });
@@ -54,7 +79,7 @@ export async function processChunk(
       logger.info({ sessionId, imageIndex, wordCount: rawWords.length }, "Processing OCR results");
 
       // Filter noise
-      const filtered = filterWords(rawWords);
+      const filtered = filterWords(rawWords, sourceLang);
 
       // Translate unique words
       const uniqueTexts = [...new Set(filtered.map((w) => w.text))];
@@ -87,16 +112,10 @@ export async function processChunk(
         words,
       };
 
-      const current = getSession(sessionId);
-      if (current) {
-        updateSession(sessionId, {
-          results: [...current.results, imageResult],
-          processedImages: current.processedImages + 1,
-        });
-      }
+      appendResult(sessionId, imageResult);
     }
   } catch (err) {
-    logger.error({ sessionId, err }, "Error processing chunk");
+    logger.error({ sessionId, err }, "Error processing chunk internal");
     updateSession(sessionId, {
       status: "error",
       error: err instanceof Error ? err.message : "Unknown error",
@@ -114,6 +133,7 @@ export function finalizeSession(sessionId: string): void {
   if (session.processedImages >= session.totalImages) {
     updateSession(sessionId, { status: "complete" });
     logger.info({ sessionId }, "Session finalized — all images processed");
+    sessionQueues.delete(sessionId);
   } else {
     logger.info(
       { sessionId, processed: session.processedImages, total: session.totalImages },
@@ -121,3 +141,4 @@ export function finalizeSession(sessionId: string): void {
     );
   }
 }
+

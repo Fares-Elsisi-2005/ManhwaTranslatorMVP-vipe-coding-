@@ -70,7 +70,7 @@ const ChunkBody = z.object({
 });
 
 router.post("/:sessionId/chunks", async (req: Request, res: Response) => {
-  const { sessionId } = req.params;
+  const { sessionId } = req.params as { sessionId: string };
 
   const session = getSession(sessionId);
   if (!session) {
@@ -111,7 +111,7 @@ router.post("/:sessionId/chunks", async (req: Request, res: Response) => {
 // Server checks if processing is done and marks session complete.
 // ──────────────────────────────────────────────────────────────────────────────
 router.post("/:sessionId/complete", (req: Request, res: Response) => {
-  const { sessionId } = req.params;
+  const { sessionId } = req.params as { sessionId: string };
 
   const session = getSession(sessionId);
   if (!session) {
@@ -138,7 +138,7 @@ router.post("/:sessionId/complete", (req: Request, res: Response) => {
 // Poll to check processing progress.
 // ──────────────────────────────────────────────────────────────────────────────
 router.get("/:sessionId/status", (req: Request, res: Response) => {
-  const { sessionId } = req.params;
+  const { sessionId } = req.params as { sessionId: string };
 
   const session = getSession(sessionId);
   if (!session) {
@@ -173,7 +173,7 @@ router.get("/:sessionId/status", (req: Request, res: Response) => {
 // Fetch the final structured result (only when status === 'complete').
 // ──────────────────────────────────────────────────────────────────────────────
 router.get("/:sessionId/result", (req: Request, res: Response) => {
-  const { sessionId } = req.params;
+  const { sessionId } = req.params as { sessionId: string };
 
   const session = getSession(sessionId);
   if (!session) {

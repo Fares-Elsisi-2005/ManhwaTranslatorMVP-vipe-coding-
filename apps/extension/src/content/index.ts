@@ -32,7 +32,7 @@ function setState(newState: ContentScriptState) {
       setState({ phase: "idle" });
       removeAllOverlays();
     });
-  } else if (state.phase !== "processing" && state.phase !== "detecting") {
+  } else if (state.phase !== "detecting") {
     // Hide overlay when not processing (but keep it hidden during detecting too)
     removeProcessingOverlay();
   }
@@ -91,13 +91,21 @@ async function handleMessage(message: ExtensionMessage, sendResponse: (r: unknow
 
 /** Step 1: Detect all Webtoon images on the page */
 async function runDetection() {
+  console.log("[WebtoonTranslate] runDetection started");
   setState({ phase: "detecting" });
 
-  // Trigger lazy-load to ensure all images are present in DOM
-  await triggerLazyLoad();
+  try {
+    // Trigger lazy-load to ensure all images are present in DOM
+    await triggerLazyLoad();
 
-  detectedImages = detectEpisodeImages();
-  setState({ phase: "detected", images: detectedImages });
+    detectedImages = detectEpisodeImages();
+    console.log(`[WebtoonTranslate] Detection complete. Found ${detectedImages.length} images.`);
+    setState({ phase: "detected", images: detectedImages });
+  } catch (err) {
+    console.error("[WebtoonTranslate] Detection failed:", err);
+    const error = err instanceof Error ? err.message : "Detection failed";
+    setState({ phase: "error", error });
+  }
 }
 
 /** Step 2: Run the full translation pipeline for selected images */
@@ -149,32 +157,25 @@ async function runTranslation(
 
       const chunkImages = selected.slice(i, i + CHUNK_SIZE);
       console.log(`[WebtoonTranslate] Processing chunk ${Math.floor(i/CHUNK_SIZE) + 1}...`);
+      const base64Items = [];
 
-      const base64Items = await Promise.all(
-        chunkImages.map(async (img) => {
+      for (const img of chunkImages) {
+        try {
           console.log(`[WebtoonTranslate] Converting image ${img.index} to base64...`);
-          try {
-            const b64 = await imageToBase64(img.src);
-            console.log(`[WebtoonTranslate] Image ${img.index} conversion successful`);
-            return {
-              imageIndex: img.index,
-              base64: b64,
-            };
-          } catch (e) {
-            console.error(`[WebtoonTranslate] Failed to convert image ${img.index}:`, e);
-            return { imageIndex: img.index, base64: "" };
-          }
-        })
-      );
+          const b64 = await imageToBase64(img.src);
+          base64Items.push({ imageIndex: img.index, base64: b64 });
+        } catch (e) {
+          console.warn(`[WebtoonTranslate] Failed to convert image ${img.index}:`, e);
+        }
+        processedCount++;
+        setState({ phase: "processing", processed: processedCount, total: selected.length });
+      }
 
       const validItems = base64Items.filter((item) => item.base64 !== "");
       if (validItems.length > 0) {
         console.log(`[WebtoonTranslate] Uploading chunk with ${validItems.length} images...`);
         await uploadChunk(sessionId, validItems);
       }
-
-      processedCount += chunkImages.length;
-      setState({ phase: "processing", processed: processedCount, total: selected.length });
     }
 
     console.log("[WebtoonTranslate] All chunks uploaded. Finalizing...");

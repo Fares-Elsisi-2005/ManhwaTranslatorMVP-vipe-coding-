@@ -48,12 +48,12 @@ export async function translateWords(
         const response = await fetch(url);
         if (!response.ok) throw new Error(`Status ${response.status}`);
 
-        const data = await response.json();
+        const data = await response.json() as Array<Array<Array<string>>>;
         
         // Google GTX response format for multiple lines:
         // The first element is an array of segments. 
         // We need to join the translations of all segments.
-        const fullTranslation = data[0].map((segment: any[]) => segment[0]).join("");
+        const fullTranslation = data[0].map((segment) => segment[0]).join("");
         const translatedLines = fullTranslation.split("\n").map((s: string) => s.trim());
 
         // Map back to original words

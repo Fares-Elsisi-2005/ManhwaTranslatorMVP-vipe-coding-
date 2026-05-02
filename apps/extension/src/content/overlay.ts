@@ -13,7 +13,7 @@ const OVERLAY_WORD_CLASS = "wt-word-overlay";
 const POPUP_ID = "wt-translation-popup";
 
 // Track which images have overlays to avoid duplicates
-const overlaidImages = new Set<HTMLImageElement>();
+const overlaidImages = new WeakSet<HTMLImageElement>();
 
 /**
  * Render overlays for all images in the episode result.
@@ -322,5 +322,4 @@ export function removeAllOverlays(): void {
   });
   document.getElementById(POPUP_ID)?.remove();
   removeProcessingOverlay();
-  overlaidImages.clear();
 }

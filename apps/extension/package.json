@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite build --watch",
     "build:popup": "vite build",
-    "build:scripts": "npx esbuild src/content/index.ts --bundle --outfile=dist/content.js --platform=browser --minify && npx esbuild src/background/index.ts --bundle --outfile=dist/background.js --platform=browser --minify",
+    "build:scripts": "node build-scripts.mjs",
     "build": "pnpm run build:popup && pnpm run build:scripts",
     "typecheck": "tsc --noEmit"
   },

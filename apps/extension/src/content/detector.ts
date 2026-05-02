@@ -121,18 +121,27 @@ export function detectEpisodeImages(): DetectedImage[] {
  */
 export async function triggerLazyLoad(): Promise<void> {
   const pageHeight = document.documentElement.scrollHeight;
+  const viewportHeight = window.innerHeight;
+  console.log(`[WebtoonTranslate] Starting lazy load. Page height: ${pageHeight}, Viewport: ${viewportHeight}`);
+
   // Use larger steps (1.5x viewport) to reduce number of scroll events
-  const step = Math.floor(window.innerHeight * 1.5);
+  const step = Math.floor(viewportHeight * 1.5);
+  let scrollCount = 0;
 
   for (let pos = 0; pos <= pageHeight; pos += step) {
     window.scrollTo({
       top: pos,
-      behavior: 'auto' // 'smooth' would be too slow and expensive here
+      behavior: 'auto'
     });
+    scrollCount++;
+    if (scrollCount % 5 === 0) {
+      console.log(`[WebtoonTranslate] Scrolling... ${Math.round((pos / pageHeight) * 100)}%`);
+    }
     // Shorter delay (80ms) is usually enough for Webtoon's IntersectionObserver
     await new Promise((r) => setTimeout(r, 80));
   }
 
+  console.log("[WebtoonTranslate] Lazy load scroll complete. Returning to top.");
   // Scroll back to top
   window.scrollTo(0, 0);
   await new Promise((r) => setTimeout(r, 200));

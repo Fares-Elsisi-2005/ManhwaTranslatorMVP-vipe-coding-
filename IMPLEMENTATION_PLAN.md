@@ -1,0 +1,24 @@
+# Implementation Plan - Webtoon Translator Companion Fixes
+
+- [x] Phase 1: Backend Infrastructure & Reliability
+    - [x] Fix 3 & 2: Session Management
+        - [x] Add `SESSION_TTL_MS` and `evictExpiredSessions` to `sessionStore.ts`
+        - [x] Implement `appendResult` in `sessionStore.ts` for atomic updates
+        - [x] Implement a per-session serialization queue in `processingService.ts`
+        - [x] Refactor `processChunk` to use the serialization queue and `appendResult`
+    - [x] Fix 7: Rate Limiting
+    - [x] Fix 12: Environment Configuration
+    - [x] Fix 8 & 9: Project Cleanup
+- [x] Phase 2: Processing Logic Improvements
+    - [x] Fix 4: Language-Aware Filtering
+    - [x] Fix 13: Invalid Input Handling
+- [x] Phase 3: Chrome Extension Stability & Performance
+    - [x] Fix 1: Memory Management (Browser Crash)
+    - [x] Fix 5: Build-time Configuration
+    - [x] Fix 6: State Persistence
+    - [x] Fix 10: Side Panel Configuration (User Preference)
+    - [x] Fix 11: Overlay Memory Optimization
+    - [x] Fix 14: Log Cleanup
+- [x] Phase 4: TypeScript & Final Verification
+    - [x] Resolve TypeScript Errors
+    - [x] Verification (Typecheck, Build, Health Check)

@@ -21,11 +21,18 @@ import { ErrorScreen } from "./screens/ErrorScreen.js";
 
 export function App() {
   const [state, setState] = useState<ContentScriptState>({ phase: "idle" });
-  const [hasUser, setHasUser] = useState(false);
+  const [hasUser, setHasUser] = useState<boolean | null>(null); // null = loading
 
   // Persist language selection across screens
   const [sourceLang, setSourceLang] = useState("en");
   const [targetLang, setTargetLang] = useState("ar");
+
+  // Load hasUser from storage
+  useEffect(() => {
+    chrome.storage.local.get(["hasUser"], (result) => {
+      setHasUser(result["hasUser"] === true);
+    });
+  }, []);
 
   // Listen for state updates pushed from the content script
   useEffect(() => {
@@ -62,6 +69,7 @@ export function App() {
   }
 
   function handleGetStarted() {
+    chrome.storage.local.set({ hasUser: true });
     setHasUser(true);
   }
 
@@ -87,6 +95,10 @@ export function App() {
   }
 
   // ── Route to correct screen ────────────────────────────────────────────────
+  if (hasUser === null) {
+    return null; // Loading from storage
+  }
+
   if (!hasUser) {
     return <LandingScreen onGetStarted={handleGetStarted} />;
   }

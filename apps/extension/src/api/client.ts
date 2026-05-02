@@ -6,7 +6,10 @@
 import type { EpisodeResult, SessionStatus } from "../types.js";
 
 // The backend URL — update this to your deployed URL for production
-const API_BASE = "http://localhost:5000/api";
+declare const __API_BASE_URL__: string;
+const API_BASE = typeof __API_BASE_URL__ !== "undefined"
+  ? __API_BASE_URL__
+  : "http://localhost:5000/api";
 
 /** Prepare a new session for an episode */
 export async function prepareSession(
@@ -81,22 +84,31 @@ export async function imageToBase64(imgSrc: string): Promise<string> {
   const blob = await response.blob();
   const imgBitmap = await createImageBitmap(blob);
   
-  const canvas = new OffscreenCanvas(imgBitmap.width, imgBitmap.height);
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    throw new Error("No canvas context");
-  }
-  ctx.drawImage(imgBitmap, 0, 0);
-  
-  const resultBlob = await canvas.convertToBlob({
-    type: "image/jpeg",
-    quality: 0.7
-  });
+  try {
+    const MAX_WIDTH = 1200;
+    const scale = imgBitmap.width > MAX_WIDTH ? MAX_WIDTH / imgBitmap.width : 1;
+    const drawW = imgBitmap.width * scale;
+    const drawH = imgBitmap.height * scale;
 
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onloadend = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(resultBlob);
-  });
+    const canvas = new OffscreenCanvas(drawW, drawH);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) {
+      throw new Error("No canvas context");
+    }
+    ctx.drawImage(imgBitmap, 0, 0, drawW, drawH);
+    
+    const resultBlob = await canvas.convertToBlob({
+      type: "image/jpeg",
+      quality: 0.7
+    });
+
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(resultBlob);
+    });
+  } finally {
+    imgBitmap.close();
+  }
 }

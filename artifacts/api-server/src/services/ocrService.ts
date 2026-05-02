@@ -49,16 +49,33 @@ export async function runOCR(imageUrls: string[]): Promise<OCRWord[][]> {
 
 /**
  * Filter out noise from OCR results.
- * Keeps only alphabetic English words with 2+ characters.
+ * For Latin scripts: keeps only alphabetic English words with 2+ characters.
+ * For non-Latin scripts: just requires non-empty text.
  */
-export function filterWords(words: OCRWord[]): OCRWord[] {
-  return words.filter((w) => {
-    // Basic cleanup for English characters
-    const cleaned = w.text.trim().replace(/[^a-zA-Z]/g, "");
-    return cleaned.length >= 2;
-  }).map((w) => ({
-    ...w,
-    // Strip punctuation from the word text itself
-    text: w.text.replace(/[^a-zA-Z'-]/g, "").trim(),
-  })).filter((w) => w.text.length >= 2);
+function isLatinScript(lang: string): boolean {
+  const latinLangs = new Set([
+    "en", "fr", "es", "de", "pt", "it", "nl", "pl", "sv", "no", "da", "fi", "hu", "cs", "ro", "tr", "id", "ms", "vi"
+  ]);
+  return latinLangs.has(lang.toLowerCase());
 }
+
+export function filterWords(words: OCRWord[], sourceLang = "en"): OCRWord[] {
+  if (isLatinScript(sourceLang)) {
+    return words.filter((w) => {
+      // Basic cleanup for English characters
+      const cleaned = w.text.trim().replace(/[^a-zA-Z]/g, "");
+      return cleaned.length >= 2;
+    }).map((w) => ({
+      ...w,
+      // Strip punctuation from the word text itself
+      text: w.text.replace(/[^a-zA-Z'-]/g, "").trim(),
+    })).filter((w) => w.text.length >= 2);
+  } else {
+    // Non-Latin: just require non-empty text
+    return words
+      .filter(w => w.text.trim().length >= 1)
+      .map(w => ({ ...w, text: w.text.trim() }))
+      .filter(w => w.text.length >= 1);
+  }
+}
+
