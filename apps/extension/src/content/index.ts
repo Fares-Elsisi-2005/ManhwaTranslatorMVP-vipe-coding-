@@ -235,7 +235,7 @@ async function runPDFDownload() {
 
 /** Poll the backend until processing is complete */
 async function pollUntilComplete(sessionId: string): Promise<EpisodeResult | null> {
-  const MAX_POLLS = 180; // 3 minutes max
+  const MAX_POLLS = 300; // 5 minutes max
   const POLL_INTERVAL = 1000;
 
   for (let i = 0; i < MAX_POLLS; i++) {

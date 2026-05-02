@@ -23,12 +23,24 @@ export function renderAllOverlays(imageResults: ImageResult[]): void {
   // Get all episode images in DOM order
   const pageImages = getPageImages();
 
-  for (const result of imageResults) {
-    const img = pageImages[result.imageIndex];
-    if (!img) continue;
+  // Process in batches using requestAnimationFrame to avoid long tasks
+  const batchSize = 5;
+  let index = 0;
 
-    renderImageOverlay(img, result);
+  function processBatch() {
+    const end = Math.min(index + batchSize, imageResults.length);
+    for (let i = index; i < end; i++) {
+      const result = imageResults[i];
+      const img = pageImages[result.imageIndex];
+      if (img) renderImageOverlay(img, result);
+    }
+    index = end;
+    if (index < imageResults.length) {
+      requestAnimationFrame(processBatch);
+    }
   }
+
+  requestAnimationFrame(processBatch);
 }
 
 /** Get all episode images from the page */
@@ -56,34 +68,42 @@ function renderImageOverlay(img: HTMLImageElement, result: ImageResult): void {
   if (overlaidImages.has(img)) return; // already done
   overlaidImages.add(img);
 
+  const width = img.offsetWidth;
+  const height = img.offsetHeight;
+  const naturalWidth = img.naturalWidth || width;
+  const naturalHeight = img.naturalHeight || height;
+
   // Create wrapper that maintains the image's layout
   const wrapper = document.createElement("div");
   wrapper.className = OVERLAY_CONTAINER_CLASS;
   wrapper.style.cssText = `
     position: relative;
     display: block;
-    width: ${img.offsetWidth}px;
+    width: ${width}px;
     line-height: 0;
   `;
+
+  // Scale factor: OCR coordinates are based on naturalWidth/Height
+  const scaleX = width / naturalWidth;
+  const scaleY = height / naturalHeight;
+
+  // Use DocumentFragment to batch DOM updates for this image
+  const fragment = document.createDocumentFragment();
+
+  // Render each word overlay
+  for (const word of result.words) {
+    createWordOverlay(fragment, word, scaleX, scaleY);
+  }
 
   // Insert wrapper before the image
   img.parentElement?.insertBefore(wrapper, img);
   wrapper.appendChild(img);
-
-  // Scale factor: OCR coordinates are based on naturalWidth/Height
-  // We need to scale them to the displayed size
-  const scaleX = img.offsetWidth / (img.naturalWidth || img.offsetWidth);
-  const scaleY = img.offsetHeight / (img.naturalHeight || img.offsetHeight);
-
-  // Render each word overlay
-  for (const word of result.words) {
-    createWordOverlay(wrapper, word, scaleX, scaleY);
-  }
+  wrapper.appendChild(fragment);
 }
 
 /** Create a single clickable word overlay box */
 function createWordOverlay(
-  container: HTMLElement,
+  container: Node,
   word: WordResult,
   scaleX: number,
   scaleY: number

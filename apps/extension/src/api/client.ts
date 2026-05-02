@@ -74,24 +74,29 @@ export async function getResult(sessionId: string): Promise<EpisodeResult> {
 
 /**
  * Convert an image element to base64 string.
- * Uses a canvas to capture the image data.
+ * Uses OffscreenCanvas and createImageBitmap for non-blocking decoding.
  */
 export async function imageToBase64(imgSrc: string): Promise<string> {
+  const response = await fetch(imgSrc);
+  const blob = await response.blob();
+  const imgBitmap = await createImageBitmap(blob);
+  
+  const canvas = new OffscreenCanvas(imgBitmap.width, imgBitmap.height);
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    throw new Error("No canvas context");
+  }
+  ctx.drawImage(imgBitmap, 0, 0);
+  
+  const resultBlob = await canvas.convertToBlob({
+    type: "image/jpeg",
+    quality: 0.7
+  });
+
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) { reject(new Error("No canvas context")); return; }
-      ctx.drawImage(img, 0, 0);
-      // Get base64 without data URI prefix
-      const full = canvas.toDataURL("image/jpeg", 0.85);
-      resolve(full); // keep data URI prefix for Cloudinary
-    };
-    img.onerror = () => reject(new Error(`Failed to load image: ${imgSrc}`));
-    img.src = imgSrc;
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(resultBlob);
   });
 }

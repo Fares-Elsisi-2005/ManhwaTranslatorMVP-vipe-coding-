@@ -116,19 +116,24 @@ export function detectEpisodeImages(): DetectedImage[] {
 
 /**
  * Trigger lazy loading by scrolling through the full page.
- * Webtoon uses IntersectionObserver — images only get their real src
- * once they scroll into view.
+ * Optimized to use larger steps and requestAnimationFrame where possible
+ * to reduce layout thrashing.
  */
 export async function triggerLazyLoad(): Promise<void> {
   const pageHeight = document.documentElement.scrollHeight;
-  const step = Math.floor(window.innerHeight * 0.8);
+  // Use larger steps (1.5x viewport) to reduce number of scroll events
+  const step = Math.floor(window.innerHeight * 1.5);
 
   for (let pos = 0; pos <= pageHeight; pos += step) {
-    window.scrollTo(0, pos);
-    await new Promise((r) => setTimeout(r, 120));
+    window.scrollTo({
+      top: pos,
+      behavior: 'auto' // 'smooth' would be too slow and expensive here
+    });
+    // Shorter delay (80ms) is usually enough for Webtoon's IntersectionObserver
+    await new Promise((r) => setTimeout(r, 80));
   }
 
   // Scroll back to top
   window.scrollTo(0, 0);
-  await new Promise((r) => setTimeout(r, 300));
+  await new Promise((r) => setTimeout(r, 200));
 }
