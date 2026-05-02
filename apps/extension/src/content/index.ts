@@ -12,7 +12,7 @@
 import type { ExtensionMessage, ContentScriptState, DetectedImage, EpisodeResult } from "../types.js";
 import { detectEpisodeImages, triggerLazyLoad } from "./detector.js";
 import { renderAllOverlays, removeAllOverlays, showProcessingOverlay, removeProcessingOverlay } from "./overlay.js";
-import { saveResult, loadResult } from "../storage/indexedDB.js";
+import { saveResult, loadResult, deleteResult } from "../storage/indexedDB.js";
 import { prepareSession, uploadChunk, completeUpload, getStatus, getResult, imageToBase64 } from "../api/client.js";
 import { downloadEpisodeAsPDF } from "./pdfDownloader.js";
 
@@ -81,6 +81,17 @@ async function handleMessage(message: ExtensionMessage, sendResponse: (r: unknow
     case "DOWNLOAD_PDF": {
       sendResponse({ ok: true });
       await runPDFDownload();
+      break;
+    }
+
+    case "CLEAR_EPISODE_CACHE": {
+      if (state.phase === "complete") {
+        const { episodeUrl, sourceLang, targetLang } = state.result;
+        await deleteResult(episodeUrl, sourceLang, targetLang);
+        removeAllOverlays();
+        setState({ phase: "idle" });
+      }
+      sendResponse({ ok: true });
       break;
     }
 

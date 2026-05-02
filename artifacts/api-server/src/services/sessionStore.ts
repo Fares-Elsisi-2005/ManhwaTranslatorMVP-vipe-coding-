@@ -27,6 +27,7 @@ export interface WordResult {
 export interface ImageResult {
   imageIndex: number;     // order in the episode
   imageUrl: string;       // cloudinary URL
+  storageId?: string;     // cloudinary public_id (for cleanup)
   words: WordResult[];    // all detected/translated words
 }
 

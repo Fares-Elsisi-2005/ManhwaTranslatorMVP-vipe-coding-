@@ -28,16 +28,23 @@ export async function runOCR(imageUrls: string[]): Promise<OCRWord[][]> {
     throw new Error("OCR provider limit exceeded: max 3 images allowed per request");
   }
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ images: imageUrls }),
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ images: imageUrls }),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error({ url, err }, "Failed to connect to OCR provider");
+    throw new Error(`OCR Network Error: Could not reach OCR provider at ${url}. Error: ${msg}`);
+  }
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => "Unknown error");
     logger.error({ status: response.status, errorBody }, "OCR provider request failed");
-    throw new Error(`OCR provider failed with status ${response.status}`);
+    throw new Error(`OCR API Error: Provider returned status ${response.status}. Details: ${errorBody}`);
   }
 
   const data = await response.json() as { results: Array<{ words: OCRWord[] }> };

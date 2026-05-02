@@ -18,6 +18,7 @@ export function CompleteScreen({ result, onReset }: Props) {
   const [pdfState, setPdfState] = useState<PdfState>("idle");
   const [pdfProgress, setPdfProgress] = useState({ loaded: 0, total: 0 });
   const [pdfError, setPdfError] = useState("");
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Listen for PDF progress/done/error from content script
   useEffect(() => {
@@ -50,6 +51,14 @@ export function CompleteScreen({ result, onReset }: Props) {
           setPdfError("Could not reach page — make sure you're on a Webtoon episode");
         }
       });
+    });
+  }
+
+  function handleClearCache() {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tab = tabs[0];
+      if (!tab?.id) return;
+      chrome.tabs.sendMessage(tab.id, { type: "CLEAR_EPISODE_CACHE" });
     });
   }
 
@@ -96,17 +105,64 @@ export function CompleteScreen({ result, onReset }: Props) {
         <StatCard label="To" value={result.targetLang.toUpperCase()} />
       </div>
 
-      {/* Cache indicator */}
+      {/* Cache indicator & Reset */}
       <div style={{
-        background: "rgba(16,185,129,0.1)",
-        border: "1px solid rgba(16,185,129,0.3)",
-        borderRadius: 8,
-        padding: "9px 12px",
-        fontSize: 12,
-        color: "#10b981",
-        display: "flex", alignItems: "center", gap: 6,
+        background: "#1e293b",
+        border: "1px solid #334155",
+        borderRadius: 12,
+        padding: "12px",
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
       }}>
-        💾 Results cached — revisiting loads instantly
+        <div style={{
+          fontSize: 12,
+          color: "#10b981",
+          display: "flex", alignItems: "center", gap: 6,
+        }}>
+          💾 Results cached for instant loading
+        </div>
+
+        {showClearConfirm ? (
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={handleClearCache}
+              style={{
+                flex: 1, padding: "8px", background: "#ef4444", color: "#fff",
+                border: "none", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer"
+              }}
+            >
+              Confirm Clear
+            </button>
+            <button
+              onClick={() => setShowClearConfirm(false)}
+              style={{
+                flex: 1, padding: "8px", background: "#334155", color: "#94a3b8",
+                border: "none", borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer"
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowClearConfirm(true)}
+            style={{
+              width: "100%",
+              padding: "8px",
+              background: "rgba(239,68,68,0.1)",
+              color: "#ef4444",
+              border: "1px solid rgba(239,68,68,0.2)",
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: "pointer",
+              transition: "all 0.2s",
+            }}
+          >
+            🗑 Clear Cache & Start Fresh
+          </button>
+        )}
       </div>
 
       {/* PDF Download button */}

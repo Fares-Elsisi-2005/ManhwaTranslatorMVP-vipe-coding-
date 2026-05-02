@@ -55,7 +55,8 @@ export type ExtensionMessage =
   | { type: "PDF_DONE" }
   | { type: "PDF_ERROR"; error: string }
   | { type: "GET_STATE" }
-  | { type: "STATE_UPDATE"; state: ContentScriptState };
+  | { type: "STATE_UPDATE"; state: ContentScriptState }
+  | { type: "CLEAR_EPISODE_CACHE" };
 
 export interface DetectedImage {
   index: number;

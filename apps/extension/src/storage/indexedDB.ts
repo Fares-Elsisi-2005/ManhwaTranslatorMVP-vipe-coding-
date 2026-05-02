@@ -83,6 +83,24 @@ export async function loadResult(
   });
 }
 
+/** Delete a specific episode result from IndexedDB */
+export async function deleteResult(
+  episodeUrl: string,
+  sourceLang: string,
+  targetLang: string
+): Promise<void> {
+  const db = await openDB();
+  const cacheKey = buildCacheKey(episodeUrl, sourceLang, targetLang);
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    const store = tx.objectStore(STORE_NAME);
+    const req = store.delete(cacheKey);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
 /** Clear all cached results */
 export async function clearAllCache(): Promise<void> {
   const db = await openDB();

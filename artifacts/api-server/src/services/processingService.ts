@@ -2,7 +2,7 @@
  * Processing Service — orchestrates the full pipeline for a batch of images.
  */
 
-import { uploadImage } from "./cloudinaryService.js";
+import { uploadImage, deleteImage } from "./cloudinaryService.js";
 import { runOCR, filterWords } from "./ocrService.js";
 import { translateWords } from "./translationService.js";
 import { getSession, updateSession, appendResult, type ImageResult } from "./sessionStore.js";
@@ -60,11 +60,11 @@ async function _processChunkInternal(
     }
 
     // ── STEP 1: Upload all images in chunk to Cloudinary ────────────────────
-    const uploads: Array<{ index: number; url: string }> = [];
+    const uploads: Array<{ index: number; url: string; publicId: string }> = [];
     for (const item of validItems) {
       logger.info({ sessionId, index: item.imageIndex }, "Uploading image to Cloudinary");
-      const url = await uploadImage(item.base64, sessionId, item.imageIndex);
-      uploads.push({ index: item.imageIndex, url });
+      const { url, publicId } = await uploadImage(item.base64, sessionId, item.imageIndex);
+      uploads.push({ index: item.imageIndex, url, publicId });
     }
 
     // ── STEP 2: Call OCR provider with batch of URLs ────────────────────────
@@ -73,7 +73,7 @@ async function _processChunkInternal(
 
     // ── STEP 3: Process OCR results for each image ──────────────────────────
     for (let i = 0; i < uploads.length; i++) {
-      const { index: imageIndex, url: imageUrl } = uploads[i];
+      const { index: imageIndex, url: imageUrl, publicId: storageId } = uploads[i];
       const rawWords = ocrResultsBatch[i] || [];
 
       logger.info({ sessionId, imageIndex, wordCount: rawWords.length }, "Processing OCR results");
@@ -109,6 +109,7 @@ async function _processChunkInternal(
       const imageResult: ImageResult = {
         imageIndex,
         imageUrl,
+        storageId,
         words,
       };
 
@@ -126,13 +127,21 @@ async function _processChunkInternal(
 /**
  * Finalize a session after all chunks are uploaded.
  */
-export function finalizeSession(sessionId: string): void {
+export async function finalizeSession(sessionId: string): Promise<void> {
   const session = getSession(sessionId);
   if (!session) return;
 
   if (session.processedImages >= session.totalImages) {
     updateSession(sessionId, { status: "complete" });
-    logger.info({ sessionId }, "Session finalized — all images processed");
+    logger.info({ sessionId }, "Session finalized — all images processed. Triggering cleanup.");
+    
+    // Clean up Cloudinary images after a short delay (30s) to ensure client got results
+    setTimeout(() => {
+      cleanupSessionStorage(sessionId).catch(err => {
+        logger.warn({ sessionId, err }, "Background storage cleanup failed");
+      });
+    }, 30000);
+
     sessionQueues.delete(sessionId);
   } else {
     logger.info(
@@ -142,3 +151,18 @@ export function finalizeSession(sessionId: string): void {
   }
 }
 
+/**
+ * Delete all Cloudinary images associated with a session.
+ */
+export async function cleanupSessionStorage(sessionId: string): Promise<void> {
+  const session = getSession(sessionId);
+  if (!session) return;
+
+  logger.info({ sessionId }, "Cleaning up Cloudinary storage for session");
+  
+  for (const result of session.results) {
+    if (result.storageId) {
+      await deleteImage(result.storageId);
+    }
+  }
+}

@@ -20,14 +20,14 @@ cloudinary.config({
 });
 
 /**
- * Upload a base64-encoded image to Cloudinary and return its public URL.
+ * Upload a base64-encoded image to Cloudinary and return its public URL and publicId.
  * Images are stored in the 'webtoon-translator' folder for easy cleanup.
  */
 export async function uploadImage(
   base64Data: string,
   sessionId: string,
   imageIndex: number
-): Promise<string> {
+): Promise<{ url: string; publicId: string }> {
   logger.info({ sessionId, imageIndex }, "Uploading image to Cloudinary");
 
   // Cloudinary accepts data URIs directly
@@ -45,7 +45,7 @@ export async function uploadImage(
   });
 
   logger.info({ url: result.secure_url, imageIndex }, "Image uploaded to Cloudinary");
-  return result.secure_url;
+  return { url: result.secure_url, publicId: result.public_id };
 }
 
 /**
